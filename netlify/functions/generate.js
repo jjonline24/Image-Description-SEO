@@ -11,7 +11,29 @@ export async function handler(event) {
     if (!imageDataUrl) {
       return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "No image" }) };
     }
-
+    const productSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        title: { type: "string" },
+        short_description: { type: "string" },
+        long_description: { type: "string" },
+        features: { type: "array", items: { type: "string" } },
+        seo: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            slug: { type: "string" },
+            metaTitle: { type: "string" },
+            metaDescription: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
+          },
+          required: ["slug", "metaTitle", "metaDescription", "keywords", "tags"],
+        },
+      },
+      required: ["title", "short_description", "long_description", "features", "seo"],
+    };
     // ----- JSON Schema we want the model to conform to -----
     const productSchema = {
       type: "object",
@@ -68,7 +90,8 @@ Requirements:
         format: {
           type: "json_schema",
           name: "ProductCopy",               // ✅ ต้องมีที่ระดับนี้
-          json_schema: { schema: productSchema, strict: true },
+          schema: productSchema,             // << ที่ API ต้องการ
+          strict: true },
         },
       },
     });
