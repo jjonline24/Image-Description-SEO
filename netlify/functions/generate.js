@@ -1,4 +1,3 @@
-// netlify/functions/generate.js
 import { client } from "./lib/openai.js";
 
 export async function handler(event) {
@@ -11,6 +10,7 @@ export async function handler(event) {
     if (!imageDataUrl) {
       return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "No image" }) };
     }
+
     const productSchema = {
       type: "object",
       additionalProperties: false,
@@ -35,13 +35,12 @@ export async function handler(event) {
       required: ["title", "short_description", "long_description", "features", "seo"],
     };
 
-    // ----- Prompt with image -----
     const input = [
       {
         role: "user",
         content: [
           {
-            type: "input_text", // ✅ ต้องเป็น input_text
+            type: "input_text",
             text: `You are a product copywriter + SEO expert. Analyze the image and write copy for an ecommerce product page.
 
 Requirements:
@@ -53,21 +52,20 @@ Requirements:
 - Avoid inventing specs you cannot see. If unsure, use safe phrasing (e.g., "available in multiple sizes").
 - Follow the JSON schema strictly.`,
           },
-          { type: "input_image", image_url: imageDataUrl }, // ✅ ใช้ input_image
+          { type: "input_image", image_url: imageDataUrl },
         ],
       },
     ];
 
-    // ----- NEW format: put name at text.format level -----
     const r = await client.responses.create({
       model: process.env.OPENAI_VISION_MODEL || "gpt-4o-mini",
       input,
       text: {
         format: {
           type: "json_schema",
-          name: "ProductCopy",               // ✅ ต้องมีที่ระดับนี้
-          schema: productSchema,             // << ที่ API ต้องการ
-          strict: true },
+          name: "ProductCopy",
+          schema: productSchema,   // << ที่ API ต้องการ
+          strict: true,
         },
       },
     });
@@ -90,7 +88,6 @@ Requirements:
       body: JSON.stringify({ ...data, _meta: { lang, tone, brand, audience } }),
     };
   } catch (err) {
-    console.error(err);
     return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: err.message || "Server error" }) };
   }
 }
