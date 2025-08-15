@@ -1,3 +1,4 @@
+// netlify/functions/generate.js
 import { client } from "./lib/openai.js";
 
 export async function handler(event) {
@@ -5,10 +6,14 @@ export async function handler(event) {
     if (event.httpMethod !== "POST") {
       return { statusCode: 405, body: "Method Not Allowed" };
     }
-    const { imageDataUrl, lang, tone, brand, audience } = JSON.parse(event.body || "{}");
-    if (!imageDataUrl) return { statusCode: 400, body: JSON.stringify({ error: "No image" }) };
 
-    const response_format = {
+    const { imageDataUrl, lang, tone, brand, audience } = JSON.parse(event.body || "{}");
+    if (!imageDataUrl) {
+      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "No image" }) };
+    }
+
+    // ⬇️ (เดิมเราใช้ `response_format` บน root — เปลี่ยนมาอยู่ใน text.format)
+    const schemaFormat = {
       type: "json_schema",
       json_schema: {
         name: "ProductCopy",
@@ -39,10 +44,14 @@ export async function handler(event) {
       },
     };
 
-    const prompt = [{
-      role: "user",
-      content: [
-        { type: "input_text", text: `You are a product copywriter + SEO expert. Analyze the image and write copy that would fit an ecommerce product page.
+    const prompt = [
+      {
+        role: "user",
+        content: [
+          {
+            // เดิมใช้ type: "input_text" → ใช้ "text" ให้ตรงสเปคใหม่
+            type: "text",
+            text: `You are a product copywriter + SEO expert. Analyze the image and write copy for an ecommerce product page.
 
 Requirements:
 - Output language: ${lang === "th" ? "Thai" : "English"}.
@@ -51,19 +60,32 @@ Requirements:
 - Target audience: ${audience}.
 - Include realistic attributes you can infer from the image (materials, color, use-cases).
 - Avoid inventing specs you cannot see. If unsure, use safe phrasing (e.g., "available in multiple sizes").
-- Follow the JSON schema strictly.` },
-        { type: "input_image", image_url: imageDataUrl },
-      ]
-    }];
+- Follow the JSON schema strictly.`,
+          },
+          { type: "input_image", image_url: imageDataUrl },
+        ],
+      },
+    ];
 
     const r = await client.responses.create({
       model: process.env.OPENAI_VISION_MODEL || "gpt-4o-mini",
       input: prompt,
-      response_format: response_format
+      // ⬇️ ใช้คีย์ใหม่ตามเอกสาร: text.format
+      text: { format: schemaFormat },
     });
 
     const text = r.output_text || "{}";
-    const data = JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      // ถ้าโมเดลตอบไม่เป็น JSON ตามสคีมา จะเห็น error ที่นี่
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Failed to parse model output as JSON", raw: text?.slice(0, 500) }),
+      };
+    }
 
     return {
       statusCode: 200,
@@ -72,6 +94,6 @@ Requirements:
     };
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, body: JSON.stringify({ error: err.message || "Server error" }) };
+    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: err.message || "Server error" }) };
   }
 }
