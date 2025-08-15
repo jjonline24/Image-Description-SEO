@@ -9,10 +9,14 @@ export async function handler(event) {
 
     const { imageDataUrl, lang, tone, brand, audience } = JSON.parse(event.body || "{}");
     if (!imageDataUrl) {
-      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "No image" }) };
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "No image" }),
+      };
     }
 
-    // ⬇️ (เดิมเราใช้ `response_format` บน root — เปลี่ยนมาอยู่ใน text.format)
+    // ใช้ text.format (ของใหม่) สำหรับ JSON Schema
     const schemaFormat = {
       type: "json_schema",
       json_schema: {
@@ -44,13 +48,13 @@ export async function handler(event) {
       },
     };
 
-    const prompt = [
+    const input = [
       {
         role: "user",
         content: [
           {
-            // เดิมใช้ type: "input_text" → ใช้ "text" ให้ตรงสเปคใหม่
-            type: "text",
+            // ✅ ต้องเป็น input_text (ตาม error ที่แจ้งมา)
+            type: "input_text",
             text: `You are a product copywriter + SEO expert. Analyze the image and write copy for an ecommerce product page.
 
 Requirements:
@@ -62,6 +66,7 @@ Requirements:
 - Avoid inventing specs you cannot see. If unsure, use safe phrasing (e.g., "available in multiple sizes").
 - Follow the JSON schema strictly.`,
           },
+          // ✅ รูปใช้อย่างเดิม input_image
           { type: "input_image", image_url: imageDataUrl },
         ],
       },
@@ -69,8 +74,8 @@ Requirements:
 
     const r = await client.responses.create({
       model: process.env.OPENAI_VISION_MODEL || "gpt-4o-mini",
-      input: prompt,
-      // ⬇️ ใช้คีย์ใหม่ตามเอกสาร: text.format
+      input,
+      // ✅ ย้าย schema มาไว้ที่นี่ (แทน response_format)
       text: { format: schemaFormat },
     });
 
@@ -78,12 +83,14 @@ Requirements:
     let data;
     try {
       data = JSON.parse(text);
-    } catch (e) {
-      // ถ้าโมเดลตอบไม่เป็น JSON ตามสคีมา จะเห็น error ที่นี่
+    } catch {
       return {
         statusCode: 500,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "Failed to parse model output as JSON", raw: text?.slice(0, 500) }),
+        body: JSON.stringify({
+          error: "Failed to parse model output as JSON",
+          raw: text?.slice(0, 500),
+        }),
       };
     }
 
@@ -94,6 +101,10 @@ Requirements:
     };
   } catch (err) {
     console.error(err);
-    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: err.message || "Server error" }) };
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: err.message || "Server error" }),
+    };
   }
 }
