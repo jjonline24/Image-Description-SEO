@@ -9,52 +9,41 @@ export async function handler(event) {
 
     const { imageDataUrl, lang, tone, brand, audience } = JSON.parse(event.body || "{}");
     if (!imageDataUrl) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "No image" }),
-      };
+      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "No image" }) };
     }
 
-    // ใช้ text.format (ของใหม่) สำหรับ JSON Schema
-    const schemaFormat = {
-      type: "json_schema",
-      json_schema: {
-        name: "ProductCopy",
-        schema: {
+    // ----- JSON Schema we want the model to conform to -----
+    const productSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        title: { type: "string" },
+        short_description: { type: "string" },
+        long_description: { type: "string" },
+        features: { type: "array", items: { type: "string" } },
+        seo: {
           type: "object",
           additionalProperties: false,
           properties: {
-            title: { type: "string" },
-            short_description: { type: "string" },
-            long_description: { type: "string" },
-            features: { type: "array", items: { type: "string" } },
-            seo: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                slug: { type: "string" },
-                metaTitle: { type: "string" },
-                metaDescription: { type: "string" },
-                keywords: { type: "array", items: { type: "string" } },
-                tags: { type: "array", items: { type: "string" } },
-              },
-              required: ["slug", "metaTitle", "metaDescription", "keywords", "tags"],
-            },
+            slug: { type: "string" },
+            metaTitle: { type: "string" },
+            metaDescription: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
           },
-          required: ["title", "short_description", "long_description", "features", "seo"],
+          required: ["slug", "metaTitle", "metaDescription", "keywords", "tags"],
         },
-        strict: true,
       },
+      required: ["title", "short_description", "long_description", "features", "seo"],
     };
 
+    // ----- Prompt with image -----
     const input = [
       {
         role: "user",
         content: [
           {
-            // ✅ ต้องเป็น input_text (ตาม error ที่แจ้งมา)
-            type: "input_text",
+            type: "input_text", // ✅ ต้องเป็น input_text
             text: `You are a product copywriter + SEO expert. Analyze the image and write copy for an ecommerce product page.
 
 Requirements:
@@ -66,17 +55,22 @@ Requirements:
 - Avoid inventing specs you cannot see. If unsure, use safe phrasing (e.g., "available in multiple sizes").
 - Follow the JSON schema strictly.`,
           },
-          // ✅ รูปใช้อย่างเดิม input_image
-          { type: "input_image", image_url: imageDataUrl },
+          { type: "input_image", image_url: imageDataUrl }, // ✅ ใช้ input_image
         ],
       },
     ];
 
+    // ----- NEW format: put name at text.format level -----
     const r = await client.responses.create({
       model: process.env.OPENAI_VISION_MODEL || "gpt-4o-mini",
       input,
-      // ✅ ย้าย schema มาไว้ที่นี่ (แทน response_format)
-      text: { format: schemaFormat },
+      text: {
+        format: {
+          type: "json_schema",
+          name: "ProductCopy",               // ✅ ต้องมีที่ระดับนี้
+          json_schema: { schema: productSchema, strict: true },
+        },
+      },
     });
 
     const text = r.output_text || "{}";
@@ -87,10 +81,7 @@ Requirements:
       return {
         statusCode: 500,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          error: "Failed to parse model output as JSON",
-          raw: text?.slice(0, 500),
-        }),
+        body: JSON.stringify({ error: "Failed to parse model output as JSON", raw: text?.slice(0, 500) }),
       };
     }
 
@@ -101,10 +92,6 @@ Requirements:
     };
   } catch (err) {
     console.error(err);
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: err.message || "Server error" }),
-    };
+    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: err.message || "Server error" }) };
   }
 }
